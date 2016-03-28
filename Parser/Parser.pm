@@ -23,7 +23,7 @@ SENTENCE_LIST ::=
       SENTENCE+    separator => <period> proper => 0
 SENTENCE ::=
       BLOCK (<colon>) PARAGRAPH   rank => 1   action => say_block
-    | CLAUSE                                  action => say_clause
+    | CLAUSE                                  #`action => say_clause
    || CLAUSE_CHAIN                            action => say_clause_chain
 CLAUSE_CHAIN ::=
       CLAUSE+  separator => <semicolon> proper => 1
@@ -166,9 +166,9 @@ IMPLICIT_LIST ::=
     | NAME BLOCK_OP (by) CLAUSE
    || NAME BLOCK_OP (by) (<colon>) PARAGRAPH
 COMMA_LIST ::=
-      LIST_CHAIN <comma> (and) VALUE_EXP    assoc => right
-LIST_CHAIN ::=
-      VALUE+   separator => <comma> proper => 1
+      VALUE
+    | VALUE <comma> COMMA_LIST
+    | VALUE <comma> (and) VALUE
 VALUE_EXP ::=
       VALUE_EXP OPERATOR VALUE_EXP
     | VALUE_NOUN as AN NAME
