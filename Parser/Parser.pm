@@ -6,6 +6,9 @@ use strict;
 
 my $source = <<'END_OF_SOURCE';
 
+
+lexeme default = action => [ value ]   latm => 1
+
 :start ::=
       PASSAGE
 PASSAGE ::=
@@ -14,45 +17,29 @@ SECTION ::=
       PARAGRAPH (<period>)                      action => say_paragraph
     | (lets talk about) PLAIN_WORD (<period>)   action => say_about
     | (in) PLAIN_WORD (<colon>)                 action => say_language
-ENUM_LIST ::=
-      ENUM_CLAUSE+
-NUMERAL_LIST ::=
-      NUMERAL_CLAUSE+
-CARDINAL_LIST ::=
-      CARDINAL_CLAUSE+
-ENUM_CLAUSE ::=
-      ([A-Za-z0-9] <rparen>) PARAGRAPH
-NUMERAL_CLAUSE ::=
-      (NUMBERALS <rparen>) PARAGRAPH
-CARDINAL_CLAUSE ::=
-      (ONE_CARDINAL <comma>) PARAGRAPH
-    | (TEN_CARDINAL <comma>) PARAGRAPH
-    | (BIG_CARDINAL ONE_CARDINAL <comma>) PARAGRAPH
-   || (BIG_CARDINAL ([-]) ONE_CARDINAL <comma>) PARAGRAPH
 PARAGRAPH ::=
-      ENUM_LIST
-    | NUMERAL_LIST
-    | CARDINAL_LIST
-    | SENTENCE_LIST   action => say_sentences
+      SENTENCE_LIST   action => say_sentences
 SENTENCE_LIST ::=
       SENTENCE+    separator => <period> proper => 0
 SENTENCE ::=
       BLOCK (<colon>) PARAGRAPH   rank => 1   action => say_block
-    | CLAUSE_CHAIN                            action => say_clause_chain
+    | CLAUSE                                  action => say_clause
+   || CLAUSE_CHAIN                            action => say_clause_chain
 CLAUSE_CHAIN ::=
       CLAUSE+  separator => <semicolon> proper => 1
 CLAUSE ::=
-      POST_CONDITIONAL_CLAUSE
-    | NON_CONDITIONAL_CLAUSE
-POST_CONDITIONAL_CLAUSE ::=
-      NON_CONDITIONAL_CLAUSE CONDITIONAL BOOLEAN        action => say_clause_conditional
-NON_CONDITIONAL_CLAUSE ::=
+      POST_CON_CLAUSE
+    | NON_CON_CLAUSE
+POST_CON_CLAUSE ::=
+      NON_CON_CLAUSE CONDITIONAL BOOLEAN     action => say_clause_conditional
+NON_CON_CLAUSE ::=
       QUESTION
     | QUESTIONLESSS
 QUESTIONLESSS ::=
       VERB
     | FLOW
     | EXPRESSION
+    | DECLARATION
     | QUESTIONLESSS CONJUNCTION QUESTIONLESSS     action => say_questionless
     | BOOLEAN
 CONJUNCTION ::=
@@ -60,31 +47,32 @@ CONJUNCTION ::=
     | or
     | xor
 QUESTION ::=
-      QUESTIONLESSS (<question>) NON_CONDITIONAL_CLAUSE (<semicolon>) NON_CONDITIONAL_CLAUSE    action => say_question
+      QUESTIONLESSS (<qmark>) NON_CON_CLAUSE (<semicolon>) NON_CON_CLAUSE    action => say_question
 BOOLEAN ::=
       VALUE_EXP EXISTS                  action => say_boolean
     | VALUE_EXP (matched with) REGEX    action => match_regex
 BLOCK ::=
-      CONDITIONAL NON_CONDITIONAL_CLAUSE                 action => say_conditional
-    | do                                                 action => say_do
-    | (to) PLAIN_WORD                                    action => say_sub
-    | (otherwise)                                        action => say_otherwise
-    | (otherwise) CONDITIONAL NON_CONDITIONAL_CLAUSE     action => say_otherwise
-    | PLAIN_WORD (does)                                  action => say_label
-    | PLAIN_WORD (does the following)                    action => say_label
-    | LOOP_TYPE LOOP                                     action => say_loop_block
+      CONDITIONAL NON_CON_CLAUSE                 action => say_conditional
+    | do                                         action => say_do
+    | (to) PLAIN_WORD                            action => say_sub
+    | (otherwise)                                action => say_otherwise
+    | (otherwise) CONDITIONAL NON_CON_CLAUSE     action => say_otherwise
+    | PLAIN_WORD (does)                          action => say_label
+    | PLAIN_WORD (does the following)            action => say_label
+    | LOOP_TYPE LOOP                             action => say_loop_block
 LOOP ::=
       ACCESSOR
-    | (each item in) LIST                  action => say_loop
-    | (each item called) NAME (in) LIST    action => say_loop
-    | (each) NAME (in) LIST                action => say_ref_loop   # NAME is a ref-type
-    | (each) NAME (called) NAME (in) LIST  action => say_ref_loop   # First NAME is a ref-type
+    | (each item in) EXPLICIT_LIST                  action => say_loop
+    | (each item called) NAME (in) EXPLICIT_LIST    action => say_loop
+    | (each) NAME (in) EXPLICIT_LIST                action => say_ref_loop   # NAME is a ref-type
+    | (each) NAME (called) NAME (in) EXPLICIT_LIST  action => say_ref_loop   # First NAME is a ref-type
 ACCESSOR ::=
-      (the) LIST_COMMAND (from) LIST   action => say_accessor
-    | (the) ACCESS (of) LIST           action => say_accessor
+      (the) LIST_COMMAND (from) EXPLICIT_LIST   action => say_accessor
+    | (the) ACCESS (of) EXPLICIT_LIST           action => say_accessor
 VALUE_NOUN ::=
       NOUN
     | VALUE
+    | EXPLICIT_LIST
 NOUN ::=
       NAME              action => say_name
    || ARTICLE NAME      action => say_noun
@@ -99,6 +87,9 @@ NAME ::=
 VALUE ::=
       NUMBER
     | NUMBER ([Ee]) SIGN DIGIT   action => say_number
+    | EXPRESSION
+    | QUOTE
+    | PLAIN_WORD
 NUMBER ::=
       DIGIT                         action => say_number
    || DIGIT (<period>) DIGIT        action => say_number
@@ -110,7 +101,7 @@ EXISTS ::=
    || STATE (equal to or) ADJECTIVE (than) VALUE_EXP   action => say_value_compare
     | (is) defined
     | exists
-   || (exists in) LIST                                 action => say_list_match
+   || (exists in) EXPLICIT_LIST                        action => say_list_match
 EXISTENCE ::=
       EXIST_WORD
     | STATE
@@ -139,10 +130,10 @@ VERB_PREP ::=
     | against
 VERB ::=
       ACTION_WORD EXPRESSION VERB_PREP EXPRESSION
-    | LIST_FUNC EXPRESSION into LIST
-    | BLOCK_VERB LIST
-   || BLOCK_VERB LIST by (<lquote>) CLAUSE (<rquote>)
-   || BLOCK_VERB LIST by (<colon>) PARAGRAPH
+    | LIST_FUNC EXPRESSION into EXPLICIT_LIST
+    | BLOCK_VERB EXPLICIT_LIST
+   || BLOCK_VERB EXPLICIT_LIST by (<lquote>) CLAUSE (<rquote>)
+   || BLOCK_VERB EXPLICIT_LIST by (<colon>) PARAGRAPH
     | OUTPUT EXPRESSION
    || OUTPUT EXPRESSION to NAME
     | UNARY EXPRESSION
@@ -164,27 +155,24 @@ TARGET ::=
     | one
     | PLAIN_WORD
 EXPRESSION ::=
-      LIST
+      VALUE_EXP
     | ADJUSTMENT
-    | DECLARATION
-    | NAME (does) FUNCTION            action => do_sub
-LIST ::=
-      LIST_CHAIN (<comma>) (and) VALUE_EXP    action => say_list  assoc => right
-    | IMPLIED_LIST
-    | VALUE_EXP                               action => say_list  assoc => right
-    | PLAIN_WORD (paired to) VALUE_EXP        action => say_list  assoc => right
+EXPLICIT_LIST ::=
+      (<lparen>) COMMA_LIST (<rparen>)
+    | IMPLICIT_LIST
+IMPLICIT_LIST ::= 
+      COMMA_LIST
+    | PLAIN_WORD (paired to) VALUE_EXP        assoc => right
     | NAME BLOCK_OP (by) CLAUSE
    || NAME BLOCK_OP (by) (<colon>) PARAGRAPH
+COMMA_LIST ::=
+      LIST_CHAIN <comma> (and) VALUE_EXP    assoc => right
 LIST_CHAIN ::=
-      EXPRESSION+   separator => <comma> proper => 1
-IMPLIED_LIST ::=
-      (<lparen>) LIST (<rparen>)
+      VALUE+   separator => <comma> proper => 1
 VALUE_EXP ::=
       VALUE_EXP OPERATOR VALUE_EXP
     | VALUE_NOUN as AN NAME
-    | VALUE_NOUN
     | ACCESSOR
-    | QUOTE
     | ASSIGNMENT
 ASSIGNMENT ::=
       NAME (gets) VALUE_EXP                          action => var_assign
@@ -196,7 +184,8 @@ DECLARATION ::=
     | NAME FILE_VERB FILE_NAME                                    action => open_filehandle
    || ARTICLE ('scalar' called) NAME FILE_VERB FILE_NAME          action => open_filehandle
    || ARTICLE SCOPE ('scalar' called) NAME FILE_VERB FILE_NAME    action => open_filehandle
-    | NAME IMPLIED_LIST                                           action => implied_list_declare
+    | NAME EXPLICIT_LIST                                          action => implied_list_declare
+    | NAME (does) FUNCTION                                        action => do_sub
 FILE_VERB ::=
       reads and writes to   action => say_file_verb
    || reads and writes      action => say_file_verb
@@ -236,29 +225,23 @@ OPERATOR ::=
       OP_WORD                      action => say_op_word
     | OP_VERB (VERB_PREP)          action => say_op_word
     | to                           action => say_op_word
-    | (to) the                     action => say_op_word
-   || (to) the (power of)          action => say_op_word
+    | (to the)                     action => say_op_word
+   || (to the power of)            action => say_op_word
    || (bitshifted) DIRECTION (by)  action => say_op_word
 ADJUSTMENT ::=
-            (<lquote>) LIST (<rquote>) (<lparen> sorted <rparen>)                           action => adjust_sorted
-    |       (<lquote>) LIST (<rquote>) (<lparen> sorted by) VALUE_EXP (<rparen>)            action => adjust_sorted
-    |  (<lquote>) VALUE_EXP (<rquote>) (<lparen>) OP_VERB (VERB_PREP) VALUE_EXP (<rparen>)  action => adjust_phrase
-    |  (<lquote>) VALUE_EXP (<rquote>) (<lparen>) ADJUST_WORD (<rparen>)                    action => adjust_incrmt
-    | (<lquote>) EXPRESSION (<rquote>) (<lparen>) using PLAIN_WORD (<rparen>)               action => adjust_pragma
-    | (<lquote>) EXPRESSION (<rquote>) (<lparen>) no PLAIN_WORD (<rparen>)                  action => adjust_pragma
-#   | (<lquote>) EXPRESSION (<rquote>) (<lparen>) in PLAIN_WORD (<rparen>)                  action => adjust_pragma
-    | (<lquote>) VALUE_EXP (<rquote>)              (not)                                    action => adjust_negate
+            (<lquote>) EXPLICIT_LIST (<rquote>) (<lsquare> sorted <rsquare>)                   action => adjust_sorted
+    |       (<lquote>) EXPLICIT_LIST (<rquote>) (<lsquare> sorted by) VALUE_EXP (<rsquare>)    action => adjust_sorted
+    |  (<lquote>) VALUE_EXP (<rquote>) (<lsquare>) OP_VERB (VERB_PREP) VALUE_EXP (<rsquare>)   action => adjust_phrase
+    |  (<lquote>) VALUE_EXP (<rquote>) (<lsquare>) ADJUST_WORD (<rsquare>)                     action => adjust_incrmt
+    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) using PLAIN_WORD (<rsquare>)                action => adjust_pragma
+    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) no PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) in PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | (<lquote>) VALUE_EXP (<rquote>)              (not)                                       action => adjust_negate
 FUNCTION ::=
-      PLAIN_WORD                    action => say_function
-    | PLAIN_WORD (with) LIST        action => say_function
+      PLAIN_WORD                        action => say_function
+    | PLAIN_WORD (with) EXPLICIT_LIST   action => say_function
 
 
-
-ONE_CARDINAL ~ 'first':i | 'second':i | 'third':i | 'fourth':i | 'fifth':i | 'six':i | 'seventh':i | 'eighth':i | 'ninth':i
-
-TEN_CARDINAL ~  'ten':i | 'eleven':i | 'twelve':i | 'thirteen':i | 'fourteen':i | 'fifteen':i | 'sixteen':i | 'seventeen':i | 'eighteen':i | 'nineteen':i
-
-BIG_CARDINAL ~ 'twenty':i | 'thirty':i | 'fourty':i | 'fifty':i | 'sixty':i | 'seventy':i | 'eighty':i | 'ninety':i
 
 LIST_COMMAND ~ 'shift':i | 'pop':i
 
@@ -271,8 +254,6 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
   BLOCK_VERB ~ 'select':i | 'map':i | 'sort':i
 
   EXIST_WORD ~ 'has':i | 'exists':i | 'equals':i | 'matches':i
-
-   NUMBERALS ~ 'I':i | 'V':i | 'X':i | 'L':i | 'C':i | 'D':i | 'M':i
 
    ADJECTIVE ~ 'lesser':i | 'greater':i | 'less':i | 'more':i
 
@@ -376,13 +357,13 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
  <lparen>    ~ '('
  <rparen>    ~ ')'
  <semicolon> ~ ';'
- <question>  ~ '?'
+ <qmark>     ~ '?'
  <period>    ~ '.'
  <comma>     ~ ','
  <colon>     ~ ':'
 
 
-<quotes>    ::=      <lquote> | <rquote>
+<squotes>   ::=      <lquote> | <rquote>
 <dquotes>   ::=     <dlquote> | <drquote>
 <lquotes>   ::=      <lquote> | <dlquote>
 <rquotes>   ::=      <rquote> | <drquote>
@@ -390,10 +371,11 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
 <slash>     ::=   <foreslash> | <backslash>
 
 
-CHAR_SET    ::=    RSVRD_CHAR | <question> | <period>  | <colon>     | <semicolon> | <comma>    #punctuation set
-REGEX_WORD  ::=    PLAIN_WORD | NON_WORD   | <quotes>  | <dquotes>   | <backslash> | <parens>   #no foreslash
-QUOTE_WORD  ::=    PLAIN_WORD | NON_WORD   | <quotes>  | <foreslash>                            #no double quotes
+CHAR_SET    ::=    RSVRD_CHAR | <qmark> | <period>  | <colon>     | <semicolon> | <comma>    #punctuation set
+REGEX_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <dquotes>   | <backslash> | <parens>   #no foreslash
+QUOTE_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <foreslash>                            #no double quotes
 SMALL_WORD  ::=    PLAIN_WORD | NON_WORD   | <dquotes> | <foreslash>                            #no single quotes
+#WORD_THING  ::=    REGEX_WORD | QUOTE_WORD | SMALL_WORD
 NON_WORD    ::=    CHAR_SET+
 
 
@@ -415,6 +397,8 @@ whitespace  ~   [\s]+
 <comment body>    ~   <comment string>*
 <comment string>  ~   <comment> | <comment char>
 <comment char>    ~   [^{}]
+
+
 END_OF_SOURCE
 
 
@@ -422,16 +406,16 @@ END_OF_SOURCE
 
 
 my $grammar = Marpa::R2::Scanless::G->new(
-    {   default_action => '[value]',
-        source         => \$source,
-    }
+  { source => \$source
+  }
 );
 
 my $parser = Marpa::R2::Scanless::R->new(
-      { grammar => $grammar,
-        semantics_package => 'PiPE::Actions',
-        trace_values => 1,
-      } );
+  { grammar => $grammar,
+    semantics_package => 'PiPE::Actions',
+    trace_values => 1,
+  }
+);
 
 my $input;
 open my $fh, "<", "test.txt";
@@ -463,7 +447,6 @@ say "\n\n";
 package PiPE::Actions;
 
 use 5.010;
-no warnings 'experimental';
 use strict;
 
 
