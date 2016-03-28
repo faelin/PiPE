@@ -1,0 +1,19 @@
+Demonstrative Pronoun:  That | This | These | Those
+
+Subject Pronoun:  I | You | We | They | It/She/He
+Object Pronoun:  Me | You | Us | Them | It/Her/Him
+
+Relative Pronoun:  Who(m)
+
+
+Interrogative Determiner:  Which | What | Whose
+Interrogative Pro-Adverb:  Where | When | Why | How
+
+
+Possessives:  My | Your | Ours | Theirs | Its/Hers/His
+
+
+Conjunctions:  For | And | But | Or | Nor | Xor | Yet | So
+
+
+Correlatives:  Either...or | Not only...but | Neither...nor | Both...and | Whether...or | Just as...so

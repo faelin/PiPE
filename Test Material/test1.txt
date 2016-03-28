@@ -1,0 +1,20 @@
+Let's talk about Example.
+
+In English:
+
+
+Do: Foo is a local scalar; Bar is a hash. Bat is an array.
+
+
+
+{To method_thing: Foo is an array;
+Bar does stuff with Fred, Tom gets Jerry, and George and Oranges, Apples, and Grapefruits...
+
+Cat is a scalar that reads and writes to "test.txt".
+
+An array called Nums gets 5, 16, 3E7, and 32e2 and 14, 32, and 12 and 2, 3, and 1.
+
+{An array that gets comparable_fruit (apples, oranges, and pears), snack_fruit (grapes, bananas, and kiwis), and starfruit is called Fruits.}
+
+
+LABEL_THING does: Bat reads from "test.txt". Yellow is a scalar. Green is a scalar.}
