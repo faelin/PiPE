@@ -3,11 +3,9 @@ package PiPE::Parser;
 use 5.010;
 use Marpa::R2;
 use strict;
+no warnings 'experimental';
 
 my $source = <<'END_OF_SOURCE';
-
-
-lexeme default = action => [ value ]   latm => 1
 
 :start ::=
       PASSAGE
@@ -18,39 +16,35 @@ SECTION ::=
     | (lets talk about) PLAIN_WORD (<period>)   action => say_about
     | (in) PLAIN_WORD (<colon>)                 action => say_language
 PARAGRAPH ::=
-      SENTENCE_LIST   action => say_sentences
+      SENTENCE_LIST       action => say_sentences
 SENTENCE_LIST ::=
-      SENTENCE+    separator => <period> proper => 0
+      SENTENCE+           separator => <period>   proper => 0  
 SENTENCE ::=
-      BLOCK (<colon>) PARAGRAPH   rank => 1   action => say_block
-    | CLAUSE                                  #`action => say_clause
-   || CLAUSE_CHAIN                            action => say_clause_chain
+      CLAUSE
+    | CLAUSE_CHAIN                                action => say_clause_chain
+    | BLOCK (<colon>) PARAGRAPH       rank => 1   action => say_block
 CLAUSE_CHAIN ::=
-      CLAUSE+  separator => <semicolon> proper => 1
+      CLAUSE+             separator => <semicolon>   proper => 1
 CLAUSE ::=
-      POST_CON_CLAUSE
-    | NON_CON_CLAUSE
-POST_CON_CLAUSE ::=
-      NON_CON_CLAUSE CONDITIONAL BOOLEAN     action => say_clause_conditional
+      NON_CON_CLAUSE
+    | NON_CON_CLAUSE CONDITIONAL BOOLEAN   action => say_clause_conditional
 NON_CON_CLAUSE ::=
-      QUESTION
-    | QUESTIONLESSS
-QUESTIONLESSS ::=
+      STATEMENT
+    | STATEMENT (<qmark>) NON_CON_CLAUSE (<semicolon>) NON_CON_CLAUSE    action => say_question
+STATEMENT ::=
       VERB
     | FLOW
-    | EXPRESSION
+    | VALUE
     | DECLARATION
-    | QUESTIONLESSS CONJUNCTION QUESTIONLESSS     action => say_questionless
     | BOOLEAN
+    | STATEMENT CONJUNCTION STATEMENT   action => say_statement
 CONJUNCTION ::=
       and
     | or
     | xor
-QUESTION ::=
-      QUESTIONLESSS (<qmark>) NON_CON_CLAUSE (<semicolon>) NON_CON_CLAUSE    action => say_question
 BOOLEAN ::=
-      VALUE_EXP EXISTS                  action => say_boolean
-    | VALUE_EXP (matched with) REGEX    action => match_regex
+      VALUE EXISTS                  action => say_boolean
+    | VALUE (matched with) REGEX    action => match_regex
 BLOCK ::=
       CONDITIONAL NON_CON_CLAUSE                 action => say_conditional
     | do                                         action => say_do
@@ -69,39 +63,42 @@ LOOP ::=
 ACCESSOR ::=
       (the) LIST_COMMAND (from) EXPLICIT_LIST   action => say_accessor
     | (the) ACCESS (of) EXPLICIT_LIST           action => say_accessor
-VALUE_NOUN ::=
-      NOUN
-    | VALUE
+VALUE_LIST ::=
+      VALUE
     | EXPLICIT_LIST
 NOUN ::=
-      NAME              action => say_name
-   || ARTICLE NAME      action => say_noun
-    | (AN) NAME         action => say_type
-   || (AN) SCOPE NAME   action => say_scoped_name
+      NAME                    action => extract_name
+   || ARTICLE NAME            action => extract_noun
+    | (AN) PLAIN_WORD         action => say_typed_name
+   || (AN) SCOPE PLAIN_WORD   action => say_scoped_name
 ARTICLE ::=
       AN
     | the
 NAME ::=
-      (<lquote>) PLAIN_WORD (<rquote>)
+      (<slquote>) PLAIN_WORD (<srquote>)
+   || (<dlquote>) PLAIN_WORD (<drquote>)
     | PLAIN_WORD
 VALUE ::=
-      NUMBER
-    | NUMBER ([Ee]) SIGN DIGIT   action => say_number
-    | EXPRESSION
+      NUMBER ([Ee]) <minus> DIGIT   action => say_number
+      NUMBER ([Ee]) DIGIT   action => say_number
+    | NUMBER
+    | VALUE_EXP
+    | ADJUSTMENT
     | QUOTE
-    | PLAIN_WORD
+    | NOUN
 NUMBER ::=
-      DIGIT                         action => say_number
-   || DIGIT (<period>) DIGIT        action => say_number
-    | SIGN DIGIT                    action => say_number
-   || SIGN DIGIT (<period>) DIGIT   action => say_number
+      RAW_NUMBER
+    | <minus> RAW_NUMBER              action => say_number
+RAW_NUMBER ::=
+      DIGIT
+   || DIGIT (<period>) DIGIT   action => say_decimal
 EXISTS ::=
-      EXISTENCE PREP_PHRASE                            action => say_exists
-    | STATE ADJECTIVE (PREPOSITION) VALUE_EXP          action => say_value_chooser
-   || STATE (equal to or) ADJECTIVE (than) VALUE_EXP   action => say_value_compare
+      EXISTENCE PREP_PHRASE                        action => say_exists
+    | STATE ADJECTIVE (PREPOSITION) VALUE          action => say_value_chooser
+   || STATE (equal to or) ADJECTIVE (than) VALUE   action => say_value_compare
     | (is) defined
     | exists
-   || (exists in) EXPLICIT_LIST                        action => say_list_match
+   || (exists in) EXPLICIT_LIST                    action => say_list_match
 EXISTENCE ::=
       EXIST_WORD
     | STATE
@@ -109,8 +106,8 @@ STATE ::=
       is
     | (is) not
 PREP_PHRASE ::=
-      VALUE_EXP
-    | (PREPOSITION) VALUE_EXP
+      VALUE
+    | (PREPOSITION) VALUE
 PREPOSITION ::=
       VERB_PREP
     | called
@@ -129,63 +126,60 @@ VERB_PREP ::=
     | times
     | against
 VERB ::=
-      ACTION_WORD EXPRESSION VERB_PREP EXPRESSION
-    | LIST_FUNC EXPRESSION into EXPLICIT_LIST
-    | BLOCK_VERB EXPLICIT_LIST
-   || BLOCK_VERB EXPLICIT_LIST by (<lquote>) CLAUSE (<rquote>)
-   || BLOCK_VERB EXPLICIT_LIST by (<colon>) PARAGRAPH
-    | OUTPUT EXPRESSION
-   || OUTPUT EXPRESSION to NAME
-    | UNARY EXPRESSION
-    | LIST_COMMAND NAME
+      ACTION_WORD VALUE (VERB_PREP) VALUE                           action => do_binary_op
+    | LIST_FUNC VALUE (into) EXPLICIT_LIST                          action => do_list_func
+    | (sort) EXPLICIT_LIST                                          action => do_sort_list
+   || BLOCK_VERB EXPLICIT_LIST (by <slquote>) CLAUSE (<srquote>)    action => do_list_parse
+   || BLOCK_VERB EXPLICIT_LIST (by <colon>) PARAGRAPH               action => do_list_parse
+    | OUTPUT VALUE_LIST                                             action => do_output
+   || OUTPUT VALUE_LIST (to) NAME                                   action => do_output
+    | UNARY VALUE                                                   action => do_unary_op
+    | LIST_COMMAND NAME                                             action => do_list_access
     | reset
-   || reset (<lquote>) [\w\-] (<rquote>)
-    | bitshift EXPRESSION DIRECTION by EXPRESSION
-    | seek EXPRESSION bytes from the DIRECTION of NAME
-   || seek EXPRESSION bytes from the current position in NAME
-    | (do) FUNCTION
+   || reset (<slquote>) [\w\-] (<srquote>)
+    | (bitshift) VALUE DIRECTION (by) VALUE                      action => do_bitshift
+    | (seek) VALUE (bytes from the) DIRECTION (of) NAME          action => do_seek
+   || (seek) VALUE (bytes from the) current (position in) NAME   action => do_seek
+    | (do) FUNCTION                                              action => do_function
 FLOW ::=
-      be done
-   || be done with TARGET
-    | do the next TARGET
-    | FLOW_WORD TARGET
-    | go to PLAIN_WORD
-TARGET ::=
-      this
-    | one
-    | PLAIN_WORD
-EXPRESSION ::=
-      VALUE_EXP
-    | ADJUSTMENT
+      (be done)                   action => say_last
+   || (be done with) PLAIN_WORD   action => say_last
+   || (be done with this)         action => say_last
+    | (do the next one)           action => say_next
+   || (do the next) PLAIN_WORD    action => say_next
+    | FLOW_WORD (this)            action => say_flow
+   || FLOW_WORD PLAIN_WORD        action => say_flow
+    | (go to) PLAIN_WORD          action => say_goto
 EXPLICIT_LIST ::=
-      (<lparen>) COMMA_LIST (<rparen>)
-    | IMPLICIT_LIST
+      (<lparen>) COMMA_LIST (<rparen>)   action => flatten_list
+    | IMPLICIT_LIST                      action => flatten_list
+    | NAME                               action => extract_list
 IMPLICIT_LIST ::= 
       COMMA_LIST
-    | PLAIN_WORD (paired to) VALUE_EXP        assoc => right
-    | NAME BLOCK_OP (by) CLAUSE
-   || NAME BLOCK_OP (by) (<colon>) PARAGRAPH
+    | PLAIN_WORD (paired to) VALUE_LIST      action => say_pair   assoc => right
+    | NAME BLOCK_OP (by) CLAUSE              action => say_list_parse
+   || NAME BLOCK_OP (by <colon>) PARAGRAPH   action => say_list_parse
 COMMA_LIST ::=
-      VALUE
-    | VALUE <comma> COMMA_LIST
-    | VALUE <comma> (and) VALUE
+      VALUE                          action => say_list
+    | VALUE (<comma>) COMMA_LIST     action => say_list
+    | VALUE (<comma> and) VALUE      action => say_list
 VALUE_EXP ::=
-      VALUE_EXP OPERATOR VALUE_EXP
-    | VALUE_NOUN as AN NAME
+      VALUE OPERATOR VALUE   action => say_op_exp   assoc => right
+    | NAME (as) AN NAME      #action => say_interface
     | ACCESSOR
     | ASSIGNMENT
 ASSIGNMENT ::=
-      NAME (gets) VALUE_EXP                          action => var_assign
-    | NOUN (called) NAME (gets) VALUE_EXP            action => post_declare_var
-   || NOUN (that gets) VALUE_EXP (is called) NAME    action => post_assign_declare
+      NAME (gets) VALUE_LIST                         action => var_assign
+    | NOUN (called) NAME (gets) VALUE_LIST           action => post_declare_var
+   || NOUN (that gets) VALUE_LIST (is called) NAME   action => post_assign_declare
 DECLARATION ::=
       NAME (is) NOUN                                              action => declare_var
+   || NAME EXPLICIT_LIST                                          action => declare_list          assoc => right
+    | NAME (does) FUNCTION                                        action => declare_sub
    || NAME (is) NOUN (that) FILE_VERB FILE_NAME                   action => declare_filehandle
     | NAME FILE_VERB FILE_NAME                                    action => open_filehandle
    || ARTICLE ('scalar' called) NAME FILE_VERB FILE_NAME          action => open_filehandle
    || ARTICLE SCOPE ('scalar' called) NAME FILE_VERB FILE_NAME    action => open_filehandle
-    | NAME EXPLICIT_LIST                                          action => implied_list_declare
-    | NAME (does) FUNCTION                                        action => do_sub
 FILE_VERB ::=
       reads and writes to   action => say_file_verb
    || reads and writes      action => say_file_verb
@@ -213,8 +207,8 @@ TEXT ::=
       STRING*
 STRING ::=
       (<lsquare>) META (<rsquare>)
-    | (<lquote>) SMALL_STRING (<rquote>)  action => say_string
-    | QUOTE_WORD                          action => say_word
+    | (<slquote>) SMALL_STRING (<srquote>)  action => say_string
+    | QUOTE_WORD                            action => say_word
 SMALL_STRING ::=
       SMALL_WORD*
 META ::=
@@ -225,18 +219,18 @@ OPERATOR ::=
       OP_WORD                      action => say_op_word
     | OP_VERB (VERB_PREP)          action => say_op_word
     | to                           action => say_op_word
-    | (to the)                     action => say_op_word
-   || (to the power of)            action => say_op_word
+    | (to) the                     action => say_op_word
+   || (to) the (power of)          action => say_op_word
    || (bitshifted) DIRECTION (by)  action => say_op_word
 ADJUSTMENT ::=
-            (<lquote>) EXPLICIT_LIST (<rquote>) (<lsquare> sorted <rsquare>)                   action => adjust_sorted
-    |       (<lquote>) EXPLICIT_LIST (<rquote>) (<lsquare> sorted by) VALUE_EXP (<rsquare>)    action => adjust_sorted
-    |  (<lquote>) VALUE_EXP (<rquote>) (<lsquare>) OP_VERB (VERB_PREP) VALUE_EXP (<rsquare>)   action => adjust_phrase
-    |  (<lquote>) VALUE_EXP (<rquote>) (<lsquare>) ADJUST_WORD (<rsquare>)                     action => adjust_incrmt
-    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) using PLAIN_WORD (<rsquare>)                action => adjust_pragma
-    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) no PLAIN_WORD (<rsquare>)                   action => adjust_pragma
-    | (<lquote>) EXPRESSION (<rquote>) (<lsquare>) in PLAIN_WORD (<rsquare>)                   action => adjust_pragma
-    | (<lquote>) VALUE_EXP (<rquote>)              (not)                                       action => adjust_negate
+      EXPLICIT_LIST (<lsquare> sorted <rsquare>)                            action => adjust_sorted
+    | EXPLICIT_LIST (<lsquare> sorted by) VALUE_EXP (<rsquare>)             action => adjust_sorted
+    | VALUE         (<lsquare>) OP_VERB (VERB_PREP) VALUE_EXP (<rsquare>)   action => adjust_phrase
+    | VALUE         (<lsquare>) ADJUST_WORD (<rsquare>)                     action => adjust_incrmt
+    | VALUE         (<lsquare>) using PLAIN_WORD (<rsquare>)                action => adjust_pragma
+    | VALUE         (<lsquare>) no PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | VALUE         (<lsquare>) in PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | (not) VALUE                                                           action => adjust_negate
 FUNCTION ::=
       PLAIN_WORD                        action => say_function
     | PLAIN_WORD (with) EXPLICIT_LIST   action => say_function
@@ -251,7 +245,7 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
 
  CONDITIONAL ~ 'if':i | 'when':i | 'unless':i | 'while':i | 'until':i
 
-  BLOCK_VERB ~ 'select':i | 'map':i | 'sort':i
+  BLOCK_VERB ~ 'map':i | 'select':i
 
   EXIST_WORD ~ 'has':i | 'exists':i | 'equals':i | 'matches':i
 
@@ -259,7 +253,7 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
 
    DIRECTION ~ 'left':i | 'right':i | 'beginning':i | 'end':i
 
-   FLOW_WORD ~ 'stop':i | 'redo':i | 'dump':i
+   FLOW_WORD ~ 'stop':i | 'redo':i | 'dump':i | 'goto':i
 
    LIST_FUNC ~ 'push':i | 'unshift':i
 
@@ -278,8 +272,6 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
        UNARY ~ 'increment':i | 'decrement':i
 
        SCOPE ~ 'local':i | 'global':i
-
-        SIGN ~ '-':i | '+':i
 
           AN ~ 'a':i | 'an':i
 
@@ -309,6 +301,7 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
        power ~ 'power':i
        times ~ 'times':i
        reads ~ 'reads':i
+        sort ~ 'sort':i
         next ~ 'next':i
         does ~ 'does':i
         item ~ 'item':i
@@ -346,10 +339,8 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
 
  <dlquote>   ~ [“"]
  <drquote>   ~ [”"]
- <lquote>    ~ [‘']
- <rquote>    ~ [’']
- <foreslash> ~ '/'
- <backslash> ~ '\'
+ <slquote>   ~ [‘']
+ <srquote>   ~ [’']
  <lbrack>    ~ '{'
  <rbrack>    ~ '}'
  <lsquare>   ~ '['
@@ -361,21 +352,28 @@ LIST_COMMAND ~ 'shift':i | 'pop':i
  <period>    ~ '.'
  <comma>     ~ ','
  <colon>     ~ ':'
+ <plus>      ~ '+'
+ <minus>     ~ '-'
+ <star>      ~ '*'
+ <slash>     ~ '/'
+ <backslash> ~ '\'
+ <modulo>    ~ '%'
 
 
-<squotes>   ::=      <lquote> | <rquote>
+<squotes>   ::=     <slquote> | <srquote>
 <dquotes>   ::=     <dlquote> | <drquote>
-<lquotes>   ::=      <lquote> | <dlquote>
-<rquotes>   ::=      <rquote> | <drquote>
+<lquotes>   ::=     <slquote> | <dlquote>
+<rquotes>   ::=     <srquote> | <drquote>
 <parens>    ::=      <lparen> | <rparen>
-<slash>     ::=   <foreslash> | <backslash>
+<slash>     ::=       <slash> | <backslash>
 
+<mathsym>   ::=        <plus> | <minus> | <slash> | <modulo> | <star>                            #math symbol set
+CHAR_SET    ::=    RSVRD_CHAR | <qmark> | <colon> | <period> | <comma> | <semicolon>             #punctuation set
 
-CHAR_SET    ::=    RSVRD_CHAR | <qmark> | <period>  | <colon>     | <semicolon> | <comma>    #punctuation set
 REGEX_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <dquotes>   | <backslash> | <parens>   #no foreslash
 QUOTE_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <foreslash>                            #no double quotes
-SMALL_WORD  ::=    PLAIN_WORD | NON_WORD   | <dquotes> | <foreslash>                            #no single quotes
-#WORD_THING  ::=    REGEX_WORD | QUOTE_WORD | SMALL_WORD
+SMALL_WORD  ::=    PLAIN_WORD | NON_WORD   | <dquotes> | <foreslash>                             #no single quotes
+#WORD_THING ::=    REGEX_WORD | QUOTE_WORD | SMALL_WORD
 NON_WORD    ::=    CHAR_SET+
 
 
@@ -406,11 +404,13 @@ END_OF_SOURCE
 
 
 my $grammar = Marpa::R2::Scanless::G->new(
-  { source => \$source
+  { default_action => '[value]',
+    source => \$source
   }
 );
 
-my $parser = Marpa::R2::Scanless::R->new(
+my $parser = Ma
+rpa::R2::Scanless::R->new(
   { grammar => $grammar,
     semantics_package => 'PiPE::Actions',
     trace_values => 1,
@@ -440,14 +440,7 @@ say "\n\n";
 
 
 
-
-
-
-
 package PiPE::Actions;
-
-use 5.010;
-use strict;
 
 
 
@@ -463,6 +456,40 @@ sub extract {
 }
 
 
+sub extract_name {
+  my $class = shift;
+  my ($name) = extract @_;
+
+  my $noun = $PiPE::Parser::Vars{ "\L$name" } // $name;
+
+  $PiPE::Parser::Vars{ "\L$noun" } = "\L$noun" unless $PiPE::Parser::Vars;
+
+  return $noun;
+}
+
+
+sub extract_noun {
+  my $class = shift;
+  my ($article, $name) = extract @_;
+
+  my $noun = $PiPE::Parser::Vars{ "\L$name" } // $name;
+
+  $PiPE::Parser::Vars{ "\L$noun" } = "\L$noun" unless $PiPE::Parser::Vars;
+
+  return "\L$article" eq 'the' ? "\\$noun" : $noun;
+}
+
+
+sub extract_list {
+  my $class = shift;
+  my ($name) = extract @_;
+
+  $name = $PiPE::Parser::Vars{ "\L$name" } // die "NO SUCH LIST AS '$name'!";
+
+  die "'$name' IS NOT A LIST!" unless $name =~ /@/;
+
+  return "$name";
+}
 
 
 sub say_paragraph {
@@ -497,7 +524,7 @@ sub say_language {
 sub say_sentences {
   my $class = shift;
   my (@sentences) = extract @_;
-  
+
   return join "\n" => @sentences;
 }
 
@@ -658,31 +685,13 @@ sub say_accessor {
 }
 
 
-sub say_name {
+sub say_typed_name {
   my $class = shift;
   my ($name) = extract @_;
 
-  my $noun = $PiPE::Parser::Vars{ "\L$name" } // $name;
-
-  return $noun;
-}
-
-
-sub say_noun {
-  my $class = shift;
-  my ($article, $name) = extract @_;
-
-  my $noun = $PiPE::Parser::Vars{ "\L$name" } // $name;
-
-  return "\L$article" eq 'the' ? "\\$noun" : $noun;
-}
-
-
-sub say_type {
-  my $class = shift;
-  my ($name) = extract @_;
-
-  my $noun = $PiPE::Parser::Types{ "\L$name" } // $PiPE::Parser::Vars{ "\L$name" } // $name;
+  my $noun = $PiPE::Parser::Types{ "\L$name" } //
+                $PiPE::Parser::Vars{ "\L$name" } //
+                $name;
 
   return $noun;
 }
@@ -692,7 +701,9 @@ sub say_scoped_name {
   my $class = shift;
   my ($scope, $name) = extract @_;
 
-  my $noun = $PiPE::Parser::Types{ "\L$name" } // $PiPE::Parser::Vars{ "\L$name" } // $name;
+  my $noun = $PiPE::Parser::Types{ "\L$name" } //
+                $PiPE::Parser::Vars{ "\L$name" } //
+                $name;
 
   return "$scope $noun";
 }
@@ -703,6 +714,14 @@ sub say_number {
   my (@inputs) = extract @_;
   
   return join "" => @inputs;
+}
+
+
+sub say_decimal {
+  my $class = shift;
+  my ($lhs, $rhs) = extract @_;
+
+  return "$lhs.$rhs";
 }
 
 
@@ -765,7 +784,7 @@ sub say_list_match {
 }
 
 
-sub do_sub {
+sub declare_sub {
   my $class = shift;
   my ($name, $function) = extract @_;
   
@@ -778,6 +797,8 @@ sub declare_var {
   my $class = shift;
   my ($name, $type) = extract @_;
 
+  $PiPE::Parser::Vars{ "$name" } = "$name";
+
   return "$type$name";
 }
 
@@ -789,6 +810,166 @@ sub declare_filehandle {
   die "ONLY A SCALAR CAN BE A FILEHANDLE" unless $type =~ /\$/i;
 
   return "open( $type$name, '$verb', '$target' )";
+}
+
+
+sub say_pair {
+  my $class = shift;
+  my ($lhs, $rhs) = extract @_;
+
+  return "$lhs => $rhs";
+}
+
+
+sub say_list_parse {
+  my $class = shift;
+  my ($name, $verb, $pattern) = extract @_;
+
+  given ( $verb ) {
+    $verb = 'map' when /mapped/;
+    $verb = 'grep' when /selected/;
+    $verb = 'sort' when /sorted/;
+    default { die "NO VALID LIST PARSE PATTERN GIVEN" }
+  }
+
+  return "$verb { $pattern } $name";
+}
+
+
+sub do_binary_op {
+  my $class = shift;
+  my ($verb, $lhs, $prep, $rhs) = extract @_;
+
+  return;
+}
+
+
+sub do_list_func {
+  my $class = shift;
+  my ($verb, $item, $target) = extract @_;
+
+  return;
+}
+
+
+sub do_sort_list {
+  my $class = shift;
+  my ($target) = extract @_;
+  return;
+}
+
+
+sub do_list_parse {
+  my $class = shift;
+  my ($verb, $list, $pattern) = extract @_;
+
+  return;
+}
+
+
+sub do_output {
+  my $class = shift;
+  my ($verb, $value, $target) = extract @_;
+
+  return;
+}
+
+
+sub do_unary_op {
+  my $class = shift;
+  my ($verb, $value) = extract @_;
+
+  return;
+}
+
+
+sub do_list_access {
+  my $class = shift;
+  my ($verb, $target) = extract @_;
+
+  return;
+}
+
+
+sub do_bitshift {
+  my $class = shift;
+  my ($lhs, $direction, $rhs) = extract @_;
+
+  return;
+}
+
+
+sub do_seek {
+  my $class = shift;
+  my ($value, $direction, $name) = extract @_;
+
+  return;
+}
+
+
+sub do_function {
+  my $class = shift;
+  my ($function) = extract @_;
+
+  return;
+}
+
+
+sub say_last {
+  my $class = shift;
+  my ($target) = extract @_;
+
+  return "last" . $target // "";
+}
+
+
+sub say_next {
+  my $class = shift;
+  my ($target) = extract @_;
+
+  return "next" . $target // "";
+}
+
+
+sub say_flow {
+  my $class = shift;
+  my ($verb, $target) = extract @_;
+
+  $verb = "return" if $verb eq 'stop';
+
+  return "$verb" . $target // "";
+}
+
+
+sub say_goto {
+  my $class = shift;
+  my ($target) = extract @_;
+
+  return "goto $target";
+}
+
+
+sub flatten_list {
+  my $class = shift;
+  my ($list) = extract @_;
+
+  return "( $list )";
+}
+
+
+sub say_list {
+  my $class = shift;
+  my (@values) = extract @_;
+  
+  return join ", " => @values;
+}
+
+
+sub say_op_exp {
+  my $class = shift;
+  my ($lhs, $op, $rhs) = extract @_;
+
+  return "($lhs $op $rhs)";
 }
 
 
@@ -820,17 +1001,19 @@ sub open_filehandle {
   my $class = shift;
   my ($target, $verb, $name, $scope, $article) = reverse extract @_;
 
-  $scope = $PIPE::Parser::Scopes{ "$scope" } // 'my';
+  $scope = $PiPE::Parser::Scopes{ "$scope" } // 'my';
+
+  $PiPE::Parser::Vars{ "$name" } = "$name";
 
   return "open( $scope $name, '$verb', '$target' )";
 }
 
 
-sub implied_list_declare {
+sub declare_list {
   my $class = shift;
-  my ($name, @value) = extract @_;
-  
-  return "local \@$name = " . join( ", " => @value );
+  my ($name, $list) = extract @_;
+
+  return "local \@$name = $list";
 }
 
 
@@ -864,14 +1047,6 @@ sub say_function {
   my ($function, @args) = extract @_;
   
   return @args ? "$function( @args )" : "$function()";
-}
-
-
-sub say_list {
-  my $class = shift;
-  my (@inputs) = extract @_;
-  
-  return '( ' . join( ", " => @inputs ) . ' )';
 }
 
 
