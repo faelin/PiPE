@@ -1,0 +1,391 @@
+:start ::=
+      PASSAGE
+PASSAGE ::=
+      SECTION+ separator => <vertical space char> proper => 0
+SECTION ::=
+      PARAGRAPH (<period>)                      action => say_paragraph
+    | (lets talk about) PLAIN_WORD (<period>)   action => say_about
+    | (in) PLAIN_WORD (<colon>)                 action => say_language
+PARAGRAPH ::=
+      SENTENCE_LIST       action => say_sentences
+SENTENCE_LIST ::=
+      SENTENCE+           separator => <period>   proper => 0  
+SENTENCE ::=
+      CLAUSE
+    | CLAUSE_CHAIN                                action => say_clause_chain
+    | BLOCK (<colon>) PARAGRAPH       rank => 1   action => say_block
+CLAUSE_CHAIN ::=
+      CLAUSE+             separator => <semicolon>   proper => 1
+CLAUSE ::=
+      NON_CON_CLAUSE
+    | NON_CON_CLAUSE CONDITIONAL BOOLEAN   action => say_clause_conditional
+NON_CON_CLAUSE ::=
+      STATEMENT
+    | STATEMENT (<qmark>) NON_CON_CLAUSE (<semicolon>) NON_CON_CLAUSE    action => say_question
+STATEMENT ::=
+      VERB
+    | FLOW
+    | VALUE
+    | DECLARATION
+    | BOOLEAN
+    | STATEMENT CONJUNCTION STATEMENT   action => say_statement
+CONJUNCTION ::=
+      and
+    | or
+    | xor
+BOOLEAN ::=
+      VALUE EXISTS                  action => say_boolean
+    | VALUE (matched with) REGEX    action => match_regex
+BLOCK ::=
+      CONDITIONAL NON_CON_CLAUSE                 action => say_conditional
+    | do                                         action => say_do
+    | (to) PLAIN_WORD                            action => say_sub
+    | (otherwise)                                action => say_otherwise
+    | (otherwise) CONDITIONAL NON_CON_CLAUSE     action => say_otherwise
+    | PLAIN_WORD (does)                          action => say_label
+    | PLAIN_WORD (does the following)            action => say_label
+    | LOOP_TYPE LOOP                             action => say_loop_block
+LOOP ::=
+      ACCESSOR
+    | (each item in) EXPLICIT_LIST                  action => say_loop
+    | (each item called) NAME (in) EXPLICIT_LIST    action => say_loop
+    | (each) NAME (in) EXPLICIT_LIST                action => say_ref_loop   # NAME is a ref-type
+    | (each) NAME (called) NAME (in) EXPLICIT_LIST  action => say_ref_loop   # First NAME is a ref-type
+ACCESSOR ::=
+      (the) LIST_COMMAND (from) EXPLICIT_LIST   action => say_accessor
+    | (the) ACCESS (of) EXPLICIT_LIST           action => say_accessor
+VALUE_LIST ::=
+      VALUE
+    | EXPLICIT_LIST
+NOUN ::=
+      NAME                    action => extract_name
+   || ARTICLE NAME            action => extract_noun
+    | (AN) PLAIN_WORD         action => say_typed_name
+   || (AN) SCOPE PLAIN_WORD   action => say_scoped_name
+ARTICLE ::=
+      AN
+    | the
+NAME ::=
+      (<slquote>) PLAIN_WORD (<srquote>)
+   || (<dlquote>) PLAIN_WORD (<drquote>)
+    | PLAIN_WORD
+VALUE ::=
+      NUMBER ([Ee]) <minus> DIGIT   action => say_number
+      NUMBER ([Ee]) DIGIT   action => say_number
+    | NUMBER
+    | VALUE_EXP
+    | ADJUSTMENT
+    | QUOTE
+    | NOUN
+NUMBER ::=
+      RAW_NUMBER
+    | <minus> RAW_NUMBER              action => say_number
+RAW_NUMBER ::=
+      DIGIT
+   || DIGIT (<period>) DIGIT   action => say_decimal
+EXISTS ::=
+      EXISTENCE PREP_PHRASE                        action => say_exists
+    | STATE ADJECTIVE (PREPOSITION) VALUE          action => say_value_chooser
+   || STATE (equal to or) ADJECTIVE (than) VALUE   action => say_value_compare
+    | (is) defined
+    | exists
+   || (exists in) EXPLICIT_LIST                    action => say_list_match
+EXISTENCE ::=
+      EXIST_WORD
+    | STATE
+STATE ::=
+      is
+    | (is) not
+PREP_PHRASE ::=
+      VALUE
+    | (PREPOSITION) VALUE
+PREPOSITION ::=
+      VERB_PREP
+    | called
+    | about
+    | that
+    | than
+    | over
+    | in
+    | of
+VERB_PREP ::=
+      with
+    | from
+    | into
+    | to
+    | by
+    | times
+    | against
+VERB ::=
+      ACTION_WORD VALUE (VERB_PREP) VALUE                           action => do_binary_op
+    | LIST_FUNC VALUE (into) EXPLICIT_LIST                          action => do_list_func
+    | (sort) EXPLICIT_LIST                                          action => do_sort_list
+   || BLOCK_VERB EXPLICIT_LIST (by <slquote>) CLAUSE (<srquote>)    action => do_list_parse
+   || BLOCK_VERB EXPLICIT_LIST (by <colon>) PARAGRAPH               action => do_list_parse
+    | OUTPUT VALUE_LIST                                             action => do_output
+   || OUTPUT VALUE_LIST (to) NAME                                   action => do_output
+    | UNARY VALUE                                                   action => do_unary_op
+    | LIST_COMMAND NAME                                             action => do_list_access
+    | reset
+   || reset (<slquote>) [\w\-] (<srquote>)
+    | (bitshift) VALUE DIRECTION (by) VALUE                      action => do_bitshift
+    | (seek) VALUE (bytes from the) DIRECTION (of) NAME          action => do_seek
+   || (seek) VALUE (bytes from the) current (position in) NAME   action => do_seek
+    | (do) FUNCTION                                              action => do_function
+FLOW ::=
+      (be done)                   action => say_last
+   || (be done with) PLAIN_WORD   action => say_last
+   || (be done with this)         action => say_last
+    | (do the next one)           action => say_next
+   || (do the next) PLAIN_WORD    action => say_next
+    | FLOW_WORD (this)            action => say_flow
+   || FLOW_WORD PLAIN_WORD        action => say_flow
+    | (go to) PLAIN_WORD          action => say_goto
+EXPLICIT_LIST ::=
+      (<lparen>) COMMA_LIST (<rparen>)   action => flatten_list
+    | IMPLICIT_LIST                      action => flatten_list
+    | NAME                               action => extract_list
+IMPLICIT_LIST ::= 
+      COMMA_LIST
+    | PLAIN_WORD (paired to) VALUE_LIST      action => say_pair   assoc => right
+    | NAME BLOCK_OP (by) CLAUSE              action => say_list_parse
+   || NAME BLOCK_OP (by <colon>) PARAGRAPH   action => say_list_parse
+COMMA_LIST ::=
+      VALUE                          action => say_list
+    | VALUE (<comma>) COMMA_LIST     action => say_list
+    | VALUE (<comma> and) VALUE      action => say_list
+VALUE_EXP ::=
+      VALUE OPERATOR VALUE   action => say_op_exp   assoc => right
+    | NAME (as) AN NAME      #action => say_interface
+    | ACCESSOR
+    | ASSIGNMENT
+ASSIGNMENT ::=
+      NAME (gets) VALUE_LIST                         action => var_assign
+    | NOUN (called) NAME (gets) VALUE_LIST           action => post_declare_var
+   || NOUN (that gets) VALUE_LIST (is called) NAME   action => post_assign_declare
+DECLARATION ::=
+      NAME (is) NOUN                                              action => declare_var
+   || NAME EXPLICIT_LIST                                          action => declare_list          assoc => right
+    | NAME (does) FUNCTION                                        action => declare_sub
+   || NAME (is) NOUN (that) FILE_VERB FILE_NAME                   action => declare_filehandle
+    | NAME FILE_VERB FILE_NAME                                    action => open_filehandle
+   || ARTICLE ('scalar' called) NAME FILE_VERB FILE_NAME          action => open_filehandle
+   || ARTICLE SCOPE ('scalar' called) NAME FILE_VERB FILE_NAME    action => open_filehandle
+FILE_VERB ::=
+      reads and writes to   action => say_file_verb
+   || reads and writes      action => say_file_verb
+    | reads from            action => say_file_verb
+   || reads                 action => say_file_verb
+    | pipes from            action => say_file_verb
+   || pipes to              action => say_file_verb
+    | writes to             action => say_file_verb
+   || writes                action => say_file_verb
+    | appends to            action => say_file_verb
+   || appends               action => say_file_verb
+FILE_NAME ::=
+      (<lquotes>) FILE_PATH <period> PLAIN_WORD (<rquotes>)                           action => say_file_name
+   || (<lquotes>) <slash> FILE_PATH <period> PLAIN_WORD (<rquotes>)                   action => say_file_name
+    | (<lquotes>) [A-Za-z] <colon> <slash> FILE_PATH <period> PLAIN_WORD (<rquotes>)  action => say_file_name
+FILE_PATH ::=
+      PLAIN_WORD+   separator => <slash> proper => 0
+REGEX ::=
+      (<foreslash>) REGEXP_PHRASE (<foreslash>)   action => say_regex
+REGEXP_PHRASE ::=
+      REGEX_WORD*
+QUOTE ::=
+      (<dlquote>) TEXT (<drquote>)        action => say_quote
+TEXT ::=
+      STRING*
+STRING ::=
+      (<lsquare>) META (<rsquare>)
+    | (<slquote>) SMALL_STRING (<srquote>)  action => say_string
+    | QUOTE_WORD                            action => say_word
+SMALL_STRING ::=
+      SMALL_WORD*
+META ::=
+      NAME        action => say_meta
+    | tab         action => say_meta
+    | newline     action => say_meta
+OPERATOR ::=
+      OP_WORD                      action => say_op_word
+    | OP_VERB (VERB_PREP)          action => say_op_word
+    | to                           action => say_op_word
+    | (to) the                     action => say_op_word
+   || (to) the (power of)          action => say_op_word
+   || (bitshifted) DIRECTION (by)  action => say_op_word
+ADJUSTMENT ::=
+      EXPLICIT_LIST (<lsquare> sorted <rsquare>)                            action => adjust_sorted
+    | EXPLICIT_LIST (<lsquare> sorted by) VALUE_EXP (<rsquare>)             action => adjust_sorted
+    | VALUE         (<lsquare>) OP_VERB (VERB_PREP) VALUE_EXP (<rsquare>)   action => adjust_phrase
+    | VALUE         (<lsquare>) ADJUST_WORD (<rsquare>)                     action => adjust_incrmt
+    | VALUE         (<lsquare>) using PLAIN_WORD (<rsquare>)                action => adjust_pragma
+    | VALUE         (<lsquare>) no PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | VALUE         (<lsquare>) in PLAIN_WORD (<rsquare>)                   action => adjust_pragma
+    | (not) VALUE                                                           action => adjust_negate
+FUNCTION ::=
+      PLAIN_WORD                        action => say_function
+    | PLAIN_WORD (with) EXPLICIT_LIST   action => say_function
+
+
+
+LIST_COMMAND ~ 'shift':i | 'pop':i
+
+ ACTION_WORD ~ 'add':i | 'subtract':i | 'multiply':i | 'divide':i | 'join':i | 'repeat':i | 'match':i
+
+ ADJUST_WORD ~ 'incremented':i | 'decremented':i | 'post-incremented':i | 'post-decremented':i
+
+ CONDITIONAL ~ 'if':i | 'when':i | 'unless':i | 'while':i | 'until':i
+
+  BLOCK_VERB ~ 'map':i | 'select':i
+
+  EXIST_WORD ~ 'has':i | 'exists':i | 'equals':i | 'matches':i
+
+   ADJECTIVE ~ 'lesser':i | 'greater':i | 'less':i | 'more':i
+
+   DIRECTION ~ 'left':i | 'right':i | 'beginning':i | 'end':i
+
+   FLOW_WORD ~ 'stop':i | 'redo':i | 'dump':i | 'goto':i
+
+   LIST_FUNC ~ 'push':i | 'unshift':i
+
+   LOOP_TYPE ~ 'for':i | 'given':i
+
+    BLOCK_OP ~ 'sorted':i | 'mapped':i | 'selected':i
+
+     OP_VERB ~ 'joined':i | 'divided':i | 'multiplied':i | 'compared':i | 'evaluated':i | 'repeated':i
+
+     OP_WORD ~ 'plus':i | 'minus':i | 'modulo':i | 'times':i
+ 
+      ACCESS ~ 'top':i | 'bottom':i | 'keys':i | 'values':i
+
+      OUTPUT ~ 'print':i | 'say':i | 'pronounce':i
+
+       UNARY ~ 'increment':i | 'decrement':i
+
+       SCOPE ~ 'local':i | 'global':i
+
+          AN ~ 'a':i | 'an':i
+
+ 
+   following ~ 'following':i
+  bitshifted ~ 'bitshifted':i
+   otherwise ~ 'otherwise':i
+    bitshift ~ 'bitshift':i
+    position ~ 'position':i
+     against ~ 'against':i
+     defined ~ 'defined':i
+     current ~ 'current':i
+     matched ~ 'matched':i
+     newline ~ 'newline':i
+     appends ~ 'appends':i
+      paired ~ 'paired':i
+      called ~ 'called':i
+      sorted ~ 'sorted':i
+      writes ~ 'writes':i
+      exists ~ 'exists':i
+       pipes ~ 'pipes':i
+       using ~ 'using':i
+       about ~ 'about':i
+       equal ~ 'equal':i
+       bytes ~ 'bytes':i
+       reset ~ 'reset':i
+       power ~ 'power':i
+       times ~ 'times':i
+       reads ~ 'reads':i
+        sort ~ 'sort':i
+        next ~ 'next':i
+        does ~ 'does':i
+        item ~ 'item':i
+        than ~ 'than':i
+        each ~ 'each':i
+        talk ~ 'talk':i
+        done ~ 'done':i
+        with ~ 'with':i
+        seek ~ 'seek':i
+        from ~ 'from':i
+        into ~ 'into':i
+        that ~ 'that':i
+        over ~ 'over':i
+        this ~ 'this':i
+        gets ~ 'gets':i
+        lets ~ 'let':i ['] 's':i
+         one ~ 'one':i
+         the ~ 'the':i
+         not ~ 'not':i
+         and ~ 'and':i
+         xor ~ 'xor':i
+         tab ~ 'tab':i
+          no ~ 'no':i
+          of ~ 'of':i
+          do ~ 'do':i
+          or ~ 'or':i
+          as ~ 'as':i
+          to ~ 'to':i
+          go ~ 'go':i
+          in ~ 'in':i
+          is ~ 'is':i
+          be ~ 'be':i
+          by ~ 'by':i
+ 
+
+ <dlquote>   ~ [“"]
+ <drquote>   ~ [”"]
+ <slquote>   ~ [‘']
+ <srquote>   ~ [’']
+ <lbrack>    ~ '{'
+ <rbrack>    ~ '}'
+ <lsquare>   ~ '['
+ <rsquare>   ~ ']'
+ <lparen>    ~ '('
+ <rparen>    ~ ')'
+ <semicolon> ~ ';'
+ <qmark>     ~ '?'
+ <period>    ~ '.'
+ <comma>     ~ ','
+ <colon>     ~ ':'
+ <plus>      ~ '+'
+ <minus>     ~ '-'
+ <star>      ~ '*'
+ <slash>     ~ '/'
+ <backslash> ~ '\'
+ <modulo>    ~ '%'
+
+
+<squotes>   ::=     <slquote> | <srquote>
+<dquotes>   ::=     <dlquote> | <drquote>
+<lquotes>   ::=     <slquote> | <dlquote>
+<rquotes>   ::=     <srquote> | <drquote>
+<parens>    ::=      <lparen> | <rparen>
+<slash>     ::=       <slash> | <backslash>
+
+<mathsym>   ::=        <plus> | <minus> | <slash> | <modulo> | <star>                            #math symbol set
+CHAR_SET    ::=    RSVRD_CHAR | <qmark> | <colon> | <period> | <comma> | <semicolon>             #punctuation set
+
+REGEX_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <dquotes>   | <backslash> | <parens>   #no foreslash
+QUOTE_WORD  ::=    PLAIN_WORD | NON_WORD   | <squotes>  | <foreslash>                            #no double quotes
+SMALL_WORD  ::=    PLAIN_WORD | NON_WORD   | <dquotes> | <foreslash>                             #no single quotes
+#WORD_THING ::=    REGEX_WORD | QUOTE_WORD | SMALL_WORD
+NON_WORD    ::=    CHAR_SET+
+
+
+PLAIN_WORD    ~   [\w]+                          #matches [A-Za-z0-9_]
+RSVRD_CHAR    ~   [^\w{}\[\]()“”"/\\‘’'?.,:;]+   #matches non-reserved non-word characters
+DIGIT         ~   [0-9_]+                        #matches any integer number
+
+
+
+<vertical space char> ~ [\x{A}\x{B}\x{C}\x{D}\x{2028}\x{2029}]+
+
+# allow whitespace
+:discard    ~   whitespace
+whitespace  ~   [\s]+
+
+# allow comments
+:discard          ~   <comment>
+<comment>         ~   <lbrack> <comment body> <rbrack>
+<comment body>    ~   <comment string>*
+<comment string>  ~   <comment> | <comment char>
+<comment char>    ~   [^{}]
+
+
+END_OF_SOURCE
