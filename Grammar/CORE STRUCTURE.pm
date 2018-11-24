@@ -12,10 +12,9 @@ my $prescan_grammar = Marpa::R2::Scanless::G->new(
 Schema ::=
     Rule+ separator => <vertical space char> proper => 0
 
-
 Rule ::=
     Translate
-  | Interpret ('.'')
+  | Interpret ('.')
   | Isa ('.')
 Translate ::=
     (translate) QUOTEPHRASE (as ':') SCRIPT (';')
@@ -26,34 +25,6 @@ Isa ::=
     QUOTEWORD (is a) WORD
   | QUOTEWORD (is a type of) WORD
   | (each of) QUOTELIST (is a type of) WORD
-
-
-QUOTELIST ::=
-    (<lquote>) LIST (<rquote>)
-QUOTEWORD ::=
-    (<lquote>) WORD (<rquote>)
-QUOTEPHRASE ::=
-    (<lquote>) PHRASE (<rquote>)
-PHRASE ::=
-    GRAMMARIT+
-GRAMMARIT ::=
-    WORD
-  | REFERENCE
-REFERENCE ::=
-    ('[') WORD (':') WORD (']')
-  | ('[') WORD (']')
-SCRIPT ::=
-    CODE+ separator => ';' proper => 1
-CODE ::=
-    CODEWORD+
-CODEWORD ::=
-    WORD
-  | NONWORD
-LIST ::=
-    CHAIN+ (',' and) WORD
-CHAIN ::=
-    WORD+ separator => ',' proper => 1
-
 
   NONWORD ~ [^\w;]+
      WORD ~ [\w]+
@@ -106,7 +77,7 @@ FILTER {
 
     my $value_ref = $parser->value;   #retrieve evaluated parse-tree
 
-    $value_ref) ? return ${$value_ref} : die 'PiPE could not recognize your code.';
+    $value_ref ? return ${$value_ref} : die 'PiPE could not recognize your code.';
       #returns the evaluated parse as the result of the filter, or dies with an error
 
 }
