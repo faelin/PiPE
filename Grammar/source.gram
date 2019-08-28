@@ -1,5 +1,5 @@
-:start ::=
-      PASSAGE
+:start ::= PASSAGE
+
 PASSAGE ::=
       SECTION+ separator => <vertical space char> proper => 0
 SECTION ::=

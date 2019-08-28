@@ -5,12 +5,14 @@ use Marpa::R2;
 use strict;
 
 my $prescan_grammar = Marpa::R2::Scanless::G->new(
-  { default_action => '[value]',
+  {
+    default_action => '[value]',
     source => \(<<'END_OF_SOURCE'),
-
 :start ::= Schema
+
 Schema ::=
     Rule+ separator => <vertical space char> proper => 0
+<vertical space char> ~ [\x{A}\x{B}\x{C}\x{D}\x{2028}\x{2029}]+
 
 Rule ::=
     Translate
@@ -26,10 +28,39 @@ Isa ::=
   | QUOTEWORD (is a type of) WORD
   | (each of) QUOTELIST (is a type of) WORD
 
+
+
+QUOTELIST ::=
+    (<lquote>) LIST (<rquote>)
+QUOTEWORD ::=
+    (<lquote>) WORD (<rquote>)
+QUOTEPHRASE ::=
+    (<lquote>) PHRASE (<rquote>)
+PHRASE ::=
+    GRAMMARIT+
+GRAMMARIT ::=
+    WORD
+  | REFERENCE
+REFERENCE ::=
+    ('[') WORD (':') WORD (']')
+  | ('[') WORD (']')
+SCRIPT ::=
+    CODE+ separator => <semicolon> proper => 1
+CODE ::=
+    CODEWORD+
+CODEWORD ::=
+    WORD
+  | NONWORD
+LIST ::=
+    CHAIN (<comma> and) WORD
+CHAIN ::=
+    WORD+ separator => <comma> proper => 1
+
   NONWORD ~ [^\w;]+
      WORD ~ [\w]+
 
 interpret ~ 'interpret':i
+translate ~ 'translate':i
     means ~ 'means':i
      mean ~ 'mean':i
      type ~ 'type':i
@@ -39,18 +70,17 @@ interpret ~ 'interpret':i
        of ~ 'of':i
        is ~ 'is':i
        as ~ 'as':i
-       an ~ 'an':i
         a ~ 'a':i
+
+<semicolon> ~ ';'
+    <comma> ~ ','
 
 <lquote> ~ [“"]
 <rquote> ~ [”"]
 
-<vertical space char> ~ [\x{A}\x{B}\x{C}\x{D}\x{2028}\x{2029}]+
-
 :discard ~ whitespace
 whitespace ~ [\s]+
 END_OF_SOURCE
-
   }
 );
 
